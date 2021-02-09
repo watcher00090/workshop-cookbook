@@ -1,5 +1,10 @@
+locals {
+  tags         = merge(var.tags, { "terraform-kubeadm:cluster" = var.cluster_name, "Name" = var.cluster_name })
+  flannel_cidr = "10.244.0.0/16" # hardcoded in flannel, do not change
+}
+
 resource "aws_vpc" "mayalearning" {
-  cidr_block       = "10.0.0.0/16"
+  cidr_block       = var.aws_vpc_cidr_block
   instance_tenancy = "default"
 
   tags = {
@@ -17,8 +22,8 @@ resource "aws_subnet" "mayalearning" {
   }
 }
 
-resource "aws_security_group" "allow_ssh" {
-  name        = "allow_ssh"
+resource "aws_security_group" "allow_access" {
+  name        = "allow_access"
   description = "Allow SSH inbound traffic"
   vpc_id      = aws_vpc.mayalearning.id
 
@@ -28,17 +33,33 @@ resource "aws_security_group" "allow_ssh" {
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+  }  
+  
+  ingress {
+    description = "Theia-ide"
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "intersubnet communication"
+    from_port = 0
+    to_port = 0
+    protocol = -1
+    cidr_blocks = [var.aws_vpc_cidr_block]
   }
 
   egress {
     from_port   = 0
     to_port     = 0
-    protocol    = "-1"
+    protocol    = -1
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   tags = {
-    Name = "allow_ssh"
+    Name = "allow_access"
   }
 }
 
@@ -65,24 +86,129 @@ resource "aws_route_table_association" "subnet-association" {
   route_table_id = aws_route_table.route-table-mayalearning.id
 }
 
-//servers.tf
-resource "aws_instance" "mayalearning-ec2-instance" {
-  ami = "ami-0074ee617a234808d"
-  instance_type = "m5ad.large"
-//  instance_type = "c5ad.xlarge"
+#------------------------------------------------------------------------------#
+# Elastic IP for master node
+#------------------------------------------------------------------------------#
+
+# EIP for master node because it must know its public IP during initialisation
+resource "aws_eip" "master" {
+  vpc  = true
+  tags = local.tags
+}
+
+resource "aws_eip_association" "master" {
+  allocation_id = aws_eip.master.id
+  instance_id   = aws_instance.master.id
+}
+
+#------------------------------------------------------------------------------#
+# Bootstrap token for kubeadm
+#------------------------------------------------------------------------------#
+
+# Generate bootstrap token
+# See https://kubernetes.io/docs/reference/access-authn-authz/bootstrap-tokens/
+resource "random_string" "token_id" {
+  length  = 6
+  special = false
+  upper   = false
+}
+
+resource "random_string" "token_secret" {
+  length  = 16
+  special = false
+  upper   = false
+}
+
+locals {
+  token = "${random_string.token_id.result}.${random_string.token_secret.result}"
+}
+
+resource "aws_instance" "master" {
+  ami           = var.ami
+  instance_type = var.instance_type
+  subnet_id     = aws_subnet.mayalearning.id
   key_name = "MayaLearning"
-  security_groups = [aws_security_group.allow_ssh.id]
-  count = 3
+  vpc_security_group_ids = [
+    aws_security_group.allow_access.id
+  ]
+  root_block_device {
+    volume_size = var.aws_instance_root_size_gb
+  }
+  tags        = merge(local.tags, { "terraform-kubeadm:node" = "master", "Name" = "${var.cluster_name}-master" })
+  volume_tags = merge(local.tags, { "terraform-kubeadm:node" = "master", "Name" = "${var.cluster_name}-master" })
+  user_data = <<-EOF
+  #!/bin/bash
+  set -e
+  ${templatefile("${path.module}/templates/machine-bootstrap.sh", {
+  docker_version : var.docker_version,
+  hostname : "${var.cluster_name}-master",
+  install_packages : var.install_packages,
+  kubernetes_version : var.kubernetes_version,
+  ssh_public_keys : var.ssh_public_keys,
+  user : "ubuntu",
+})}
+  systemctl unmask docker
+  systemctl start docker
+  # Run kubeadm
+  kubeadm init \
+    --token "${local.token}" \
+    --token-ttl 1440m \
+    --apiserver-cert-extra-sans "${aws_eip.master.public_ip}" \
+    --pod-network-cidr "${local.flannel_cidr}" \
+    --node-name ${var.cluster_name}-master
+  systemctl enable kubelet
+  # Prepare kubeconfig file for download to local machine
+  mkdir -p /home/ubuntu/.kube
+  cp /etc/kubernetes/admin.conf /home/ubuntu
+  cp /etc/kubernetes/admin.conf /home/ubuntu/.kube/config # enable kubectl on the node
+  sudo mkdir /root/.kube
+  sudo cp /etc/kubernetes/admin.conf /root/.kube/config
+  chown ubuntu:ubuntu /home/ubuntu/admin.conf /home/ubuntu/.kube/config
+  # prepare kube config for download
+  kubectl --kubeconfig /home/ubuntu/admin.conf config set-cluster kubernetes --server https://${aws_eip.master.public_ip}:6443
+  # Indicate completion of bootstrapping on this node
+  touch /home/ubuntu/done
+  docker pull theiaide/sadl
+  docker run -it -p 3000:3000 -v "$(pwd):/home/project" theiaide/sadl
+  
+  EOF
+}
+
+//servers.tf
+resource "aws_instance" "worker" {
+  depends_on = [aws_instance.master]
+  ami = var.ami
+  instance_type = var.instance_type
+  key_name = "MayaLearning"
+  security_groups = [aws_security_group.allow_access.id]
+  count = 2
 tags = {
     Name = "mayalearning-${format("%d", count.index + 1)}"
   }
 subnet_id = aws_subnet.mayalearning.id
-}
 
-output "instance_ips" {
-  value = aws_instance.mayalearning-ec2-instance.*.public_ip
-}
 
-//output "lb_address" {
-//  value = aws_instance.mayalearning-ec2-instance[count.index].public_dns
-//}
+  user_data = <<-EOF
+  #!/bin/bash
+  set -e
+  ${templatefile("${path.module}/templates/machine-bootstrap.sh", {
+  docker_version : var.docker_version,
+  hostname : "${var.cluster_name}-worker-${count.index}",
+  install_packages : var.install_packages,
+  kubernetes_version : var.kubernetes_version,
+  ssh_public_keys : var.ssh_public_keys,
+  user : "ubuntu",
+})}
+  systemctl unmask docker
+  systemctl start docker
+  systemctl start kubelet
+  # Run kubeadm
+  kubeadm join ${aws_instance.master.private_ip}:6443 \
+    --token ${local.token} \
+    --discovery-token-unsafe-skip-ca-verification \
+    --node-name ${var.cluster_name}-worker-${count.index}
+  systemctl enable docker kubelet
+  # Indicate completion of bootstrapping on this node
+  touch /home/ubuntu/done
+  EOF
+}
