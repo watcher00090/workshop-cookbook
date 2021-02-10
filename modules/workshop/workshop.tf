@@ -123,6 +123,11 @@ locals {
   token = "${random_string.token_id.result}.${random_string.token_secret.result}"
 }
 
+resource "tls_private_key" "internode_ssh" {
+  algorithm   = "RSA"
+  rsa_bits = "2048"
+}
+
 resource "aws_instance" "master" {
   ami           = var.ami
   instance_type = var.instance_type
@@ -138,6 +143,13 @@ resource "aws_instance" "master" {
   volume_tags = merge(local.tags, { "terraform-kubeadm:node" = "master", "Name" = "${var.cluster_name}-master" })
   user_data = <<-EOF
   #!/bin/bash
+  echo '${trimspace(tls_private_key.internode_ssh.public_key_openssh)}' >> /home/ubuntu/.ssh/internode_ssh.pub
+    chown ubuntu:ubuntu /home/ubuntu/.ssh/internode_ssh.pub
+  ssh-keygen -l -f /home/ubuntu/.ssh/internode_ssh.pub >> known_hosts
+  echo '${trimspace(tls_private_key.internode_ssh.private_key_pem)}' > "/home/ubuntu/.ssh/internode_ssh"
+  chown ubuntu:ubuntu /home/ubuntu/.ssh/internode_ssh
+  chmod 600 "/home/ubuntu/.ssh/internode_ssh"
+  #chown root:root /home/ubuntu/.ssh/known_hosts
   set -e
   ${templatefile("${path.module}/templates/machine-bootstrap.sh", {
   docker_version : var.docker_version,
@@ -186,10 +198,11 @@ tags = {
     Name = "mayalearning-${format("%d", count.index + 1)}"
   }
 subnet_id = aws_subnet.mayalearning.id
-
-
   user_data = <<-EOF
   #!/bin/bash
+  echo '${trimspace(tls_private_key.internode_ssh.public_key_openssh)}' > "/home/ubuntu/.ssh/internode_ssh.pub"
+  chmod 644 "/home/ubuntu/.ssh/internode_ssh.pub"
+  sudo cat '/home/ubuntu/.ssh/internode_ssh.pub' >> /home/ubuntu/.ssh/authorized_keys
   set -e
   ${templatefile("${path.module}/templates/machine-bootstrap.sh", {
   docker_version : var.docker_version,

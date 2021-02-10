@@ -8,7 +8,7 @@ sudo hostnamectl set-hostname "${hostname}"
 
 # set up multiple ssh public keys for both ${user} and root - allowing ssh to root account which is disabled in authorized_keys by AWS by default
 mkdir -p "/home/${user}/.ssh" /root/.ssh/
-sudo rm "/home/${user}/.ssh/authorized_keys" /root/.ssh/authorized_keys || true
+# sudo rm "/home/${user}/.ssh/authorized_keys" /root/.ssh/authorized_keys || true
 
 %{for ssh_public_key in ssh_public_keys~}
 echo '${lookup(ssh_public_key, "key_file", "__missing__") == "__missing__" ? trimspace(lookup(ssh_public_key, "key_data")) : trimspace(file(lookup(ssh_public_key, "key_file")))}' >> /home/ubuntu/.ssh/authorized_keys
