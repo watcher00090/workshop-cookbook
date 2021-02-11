@@ -65,3 +65,9 @@ variable "ssh_public_keys" {
     "key1" = { "key_file" = "./id_rsa.pub" },
   }
 }
+
+variable "workshop_url" {
+    type = string
+    description = "github url of workshop"
+    default = "https://github.com/mando222/WorkshopTemplate.git"
+}

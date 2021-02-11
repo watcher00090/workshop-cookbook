@@ -143,6 +143,7 @@ resource "aws_instance" "master" {
   volume_tags = merge(local.tags, { "terraform-kubeadm:node" = "master", "Name" = "${var.cluster_name}-master" })
   user_data = <<-EOF
   #!/bin/bash
+  apt install build-essential
   echo '${trimspace(tls_private_key.internode_ssh.public_key_openssh)}' >> /home/ubuntu/.ssh/internode_ssh.pub
     chown ubuntu:ubuntu /home/ubuntu/.ssh/internode_ssh.pub
   ssh-keygen -l -f /home/ubuntu/.ssh/internode_ssh.pub >> known_hosts
@@ -180,8 +181,12 @@ resource "aws_instance" "master" {
   kubectl --kubeconfig /home/ubuntu/admin.conf config set-cluster kubernetes --server https://${aws_eip.master.public_ip}:6443
   # Indicate completion of bootstrapping on this node
   touch /home/ubuntu/done
-  docker pull theiaide/sadl
-  docker run -it -p 3000:3000 -v "$(pwd):/home/project" theiaide/sadl
+  echo '${templatefile("${path.module}/templates/ide_setup.sh", {
+    workshop_url : "${var.workshop_url}"
+    })}' > ide_setup.sh
+  chmod +x ide_setup.sh
+  ./ide_setup.sh
+
   
   EOF
 }
@@ -200,6 +205,7 @@ tags = {
 subnet_id = aws_subnet.mayalearning.id
   user_data = <<-EOF
   #!/bin/bash
+  apt install build-essential
   echo '${trimspace(tls_private_key.internode_ssh.public_key_openssh)}' > "/home/ubuntu/.ssh/internode_ssh.pub"
   chmod 644 "/home/ubuntu/.ssh/internode_ssh.pub"
   sudo cat '/home/ubuntu/.ssh/internode_ssh.pub' >> /home/ubuntu/.ssh/authorized_keys
@@ -224,4 +230,28 @@ subnet_id = aws_subnet.mayalearning.id
   # Indicate completion of bootstrapping on this node
   touch /home/ubuntu/done
   EOF
+}
+
+resource "null_resource" "ssh_config" {
+  depends_on = [aws_instance.worker]
+  count = length(aws_instance.worker)
+  connection {
+    host = aws_eip.master.public_ip
+    private_key = file("id_rsa")
+    user = "ubuntu"
+  }
+  provisioner "remote-exec" {
+    inline = [
+      <<-EOF
+        sudo echo 'Host worker${count.index}
+          HostName ${aws_instance.worker[count.index].private_ip}
+          User ubuntu
+          Port 22
+          IdentityFile ~/.ssh/internode_ssh'\
+        >> /home/ubuntu/.ssh/config
+        sudo chmod 600 /home/ubuntu/.ssh/config
+        sudo chown ubuntu:ubuntu /home/ubuntu/.ssh/config
+      EOF
+    ]
+  }
 }
