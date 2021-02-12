@@ -49,6 +49,7 @@ variable "install_packages" {
     "strace",
     "sysstat",
     "tcpdump",
+    "build-essential",
   ]
 }
 

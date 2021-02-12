@@ -143,14 +143,12 @@ resource "aws_instance" "master" {
   volume_tags = merge(local.tags, { "terraform-kubeadm:node" = "master", "Name" = "${var.cluster_name}-master" })
   user_data = <<-EOF
   #!/bin/bash
-  apt install build-essential
   echo '${trimspace(tls_private_key.internode_ssh.public_key_openssh)}' >> /home/ubuntu/.ssh/internode_ssh.pub
     chown ubuntu:ubuntu /home/ubuntu/.ssh/internode_ssh.pub
   ssh-keygen -l -f /home/ubuntu/.ssh/internode_ssh.pub >> known_hosts
   echo '${trimspace(tls_private_key.internode_ssh.private_key_pem)}' > "/home/ubuntu/.ssh/internode_ssh"
   chown ubuntu:ubuntu /home/ubuntu/.ssh/internode_ssh
   chmod 600 "/home/ubuntu/.ssh/internode_ssh"
-  #chown root:root /home/ubuntu/.ssh/known_hosts
   set -e
   ${templatefile("${path.module}/templates/machine-bootstrap.sh", {
   docker_version : var.docker_version,
@@ -181,12 +179,9 @@ resource "aws_instance" "master" {
   kubectl --kubeconfig /home/ubuntu/admin.conf config set-cluster kubernetes --server https://${aws_eip.master.public_ip}:6443
   # Indicate completion of bootstrapping on this node
   touch /home/ubuntu/done
-  echo '${templatefile("${path.module}/templates/ide_setup.sh", {
+  ${templatefile("${path.module}/templates/ide_setup.sh", {
     workshop_url : "${var.workshop_url}"
-    })}' > ide_setup.sh
-  chmod +x ide_setup.sh
-  ./ide_setup.sh
-
+  })}
   
   EOF
 }

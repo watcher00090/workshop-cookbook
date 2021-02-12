@@ -1,6 +1,6 @@
 mkdir ide
-mkdir ~/workshop
-git clone ${workshop_url} ~/workshop
+mkdir /home/ubuntu/workshop
+git clone ${workshop_url} /home/ubuntu/workshop
 cd ide
 echo '{
   "private": true,
@@ -60,5 +60,5 @@ done
 while ! yarn theia build; do 
     sleep 10
 done
-nohup yarn start ~/workshop --hostname 0.0.0.0 --port 3000 &
+su -c 'nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 &' ubuntu
 
