@@ -128,6 +128,11 @@ resource "tls_private_key" "internode_ssh" {
   rsa_bits = "2048"
 }
 
+resource "aws_key_pair" "deployer" {
+  key_name   = "id_rsa"
+  public_key = file("id_rsa.pub")
+}
+
 resource "aws_instance" "master" {
   ami           = var.ami
   instance_type = var.instance_type
@@ -141,49 +146,61 @@ resource "aws_instance" "master" {
   }
   tags        = merge(local.tags, { "terraform-kubeadm:node" = "master", "Name" = "${var.cluster_name}-master-${format("%d", var.module_pass)}" })
   volume_tags = merge(local.tags, { "terraform-kubeadm:node" = "master", "Name" = "${var.cluster_name}-master-${format("%d", var.module_pass)}" })
-  user_data = <<-EOF
-  #!/bin/bash
-  echo '${trimspace(tls_private_key.internode_ssh.public_key_openssh)}' >> /home/ubuntu/.ssh/internode_ssh.pub
-    chown ubuntu:ubuntu /home/ubuntu/.ssh/internode_ssh.pub
-  ssh-keygen -l -f /home/ubuntu/.ssh/internode_ssh.pub >> known_hosts
-  echo '${trimspace(tls_private_key.internode_ssh.private_key_pem)}' > "/home/ubuntu/.ssh/internode_ssh"
-  chown ubuntu:ubuntu /home/ubuntu/.ssh/internode_ssh
-  chmod 600 "/home/ubuntu/.ssh/internode_ssh"
-  set -e
-  ${templatefile("${path.module}/templates/machine-bootstrap.sh", {
-  docker_version : var.docker_version,
-  hostname : "${var.cluster_name}-master",
-  install_packages : var.install_packages,
-  kubernetes_version : var.kubernetes_version,
-  ssh_public_keys : var.ssh_public_keys,
-  user : "ubuntu",
-})}
-  systemctl unmask docker
-  systemctl start docker
-  # Run kubeadm
-  kubeadm init \
-    --token "${local.token}" \
-    --token-ttl 1440m \
-    --apiserver-cert-extra-sans "${aws_eip.master.public_ip}" \
-    --pod-network-cidr "${local.flannel_cidr}" \
-    --node-name ${var.cluster_name}-master
-  systemctl enable kubelet
-  # Prepare kubeconfig file for download to local machine
-  mkdir -p /home/ubuntu/.kube
-  cp /etc/kubernetes/admin.conf /home/ubuntu
-  cp /etc/kubernetes/admin.conf /home/ubuntu/.kube/config # enable kubectl on the node
-  sudo mkdir /root/.kube
-  sudo cp /etc/kubernetes/admin.conf /root/.kube/config
-  chown ubuntu:ubuntu /home/ubuntu/admin.conf /home/ubuntu/.kube/config
-  # prepare kube config for download
-  kubectl --kubeconfig /home/ubuntu/admin.conf config set-cluster kubernetes --server https://${aws_eip.master.public_ip}:6443
-  # Indicate completion of bootstrapping on this node
-  touch /home/ubuntu/done
-  ${templatefile("${path.module}/templates/ide_setup.sh", {
-    workshop_url : "${var.workshop_url}"
-  })}
+  
+  connection {
+    host = self.public_ip
+    user = "root"
+    private_key = "MayaLearning"
+  }
+  
+  provisioner "file" {
+    content = templatefile("${path.module}/templates/master_ssh.sh", {
+      key : trimspace(tls_private_key.internode_ssh.public_key_openssh),
+      private_key : trimspace(tls_private_key.internode_ssh.private_key_pem)
+    })
+    destination = "/home/ubuntu/master_ssh.sh"
+  }
+  
+  provisioner "file" {
+    content = templatefile("${path.module}/templates/machine-bootstrap.sh", {
+      docker_version : var.docker_version,
+      hostname : "${var.cluster_name}-master",
+      install_packages : var.install_packages,
+      kubernetes_version : var.kubernetes_version,
+      ssh_public_keys : var.ssh_public_keys,
+      user : "ubuntu",
+    })
+    destination = "/home/ubuntu/machine-bootstrap.sh"
+  }
+  
+  provisioner "file" {
+    content = templatefile("${path.module}/templates/k8_master.sh", {
+      token : "${local.token}",
+      ip_address : "${aws_eip.master.public_ip}",
+      flannel_cidr : "${local.flannel_cidr}",
+      cluster_name : "${var.cluster_name}",
+    })
+    destination = "/home/ubuntu/k8_master.sh"
+  }
 
-  EOF
+  provisioner "file" {
+    content = templatefile("${path.module}/templates/ide_setup.sh", {
+    workshop_url : "${var.workshop_url}"
+  })
+    destination = "/home/ubuntu/ide_setup.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "set -xve",
+      "chmod +x /home/ubuntu/master_ssh.sh /home/ubuntu/machine-bootstrap.sh /home/ubuntu/k8_master.sh /home/ubuntu/ide_setup.sh",
+      "/home/ubuntu/master_ssh.sh",
+      "/home/ubuntu/machine-bootstrap.sh",
+      "/home/ubuntu/k8_master.sh",
+      "/home/ubuntu/ide_setup.sh",
+    ]
+  }
+
 }
 
 resource "aws_instance" "worker" {
@@ -197,32 +214,51 @@ tags = {
     Name = "mayalearning-${format("%d", count.index)}"
   }
 subnet_id = aws_subnet.mayalearning.id
-  user_data = <<-EOF
-  #!/bin/bash
-  echo '${trimspace(tls_private_key.internode_ssh.public_key_openssh)}' > "/home/ubuntu/.ssh/internode_ssh.pub"
-  chmod 644 "/home/ubuntu/.ssh/internode_ssh.pub"
-  sudo cat '/home/ubuntu/.ssh/internode_ssh.pub' >> /home/ubuntu/.ssh/authorized_keys
-  set -e
-  ${templatefile("${path.module}/templates/machine-bootstrap.sh", {
-  docker_version : var.docker_version,
-  hostname : "${var.cluster_name}-worker-${count.index}",
-  install_packages : var.install_packages,
-  kubernetes_version : var.kubernetes_version,
-  ssh_public_keys : var.ssh_public_keys,
-  user : "ubuntu",
-})}
-  systemctl unmask docker
-  systemctl start docker
-  systemctl start kubelet
-  # Run kubeadm
-  kubeadm join ${aws_instance.master.private_ip}:6443 \
-    --token ${local.token} \
-    --discovery-token-unsafe-skip-ca-verification \
-    --node-name ${var.cluster_name}-worker-${count.index}
-  systemctl enable docker kubelet
-  # Indicate completion of bootstrapping on this node
-  touch /home/ubuntu/done
-  EOF
+
+  connection {
+    host = self.public_ip
+    user = "root"
+    private_key = "MayaLearning"
+  }
+
+  provisioner "file" {
+    content = templatefile("${path.module}/templates/worker_ssh.sh", {
+      key : trimspace(tls_private_key.internode_ssh.public_key_openssh),
+    })
+    destination = "/home/ubuntu/worker_ssh.sh"
+  }
+
+  provisioner "file" {
+    content = templatefile("${path.module}/templates/machine-bootstrap.sh", {
+      docker_version : var.docker_version,
+      hostname : "${var.cluster_name}-worker-${count.index}",
+      install_packages : var.install_packages,
+      kubernetes_version : var.kubernetes_version,
+      ssh_public_keys : var.ssh_public_keys,
+      user : "ubuntu",
+    })
+    destination = "/home/ubuntu/machine-bootstrap.sh"
+  }
+
+  provisioner "file" {
+    content = templatefile("${path.module}/templates/k8_worker.sh", {
+      ip_address : "${aws_instance.master.private_ip}",
+      token : "${local.token}",
+      clustername : "${var.cluster_name}",
+      count_index : "${count.index}",
+    })
+    destination = "/home/ubuntu/machine-bootstrap.sh"
+  }
+  provisioner "remote-exec" {
+    inline = [
+      "set -xve",
+      "chmod +x /home/ubuntu/k8_worker.sh /home/ubuntu/machine-bootstrap.sh /home/ubuntu/worker_ssh.sh",
+      "/home/ubuntu/k8_worker.sh",
+      "/home/ubuntu/machine-bootstrap.sh",
+      "/home/ubuntu/worker_ssh.sh",
+    ]
+  }
+
 }
 
 resource "null_resource" "ssh_config" {
