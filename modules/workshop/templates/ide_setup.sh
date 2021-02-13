@@ -60,5 +60,6 @@ done
 while ! yarn theia build; do 
     sleep 10
 done
-su -c 'nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 &' ubuntu
+# su -c 'nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 &' ubuntu
 
+sudo nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 & echo 'started'

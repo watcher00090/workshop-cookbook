@@ -1,7 +1,7 @@
 
 variable "cluster_count" {
   type        = number
-  description = "Number of worker nodes in k8s cluster"
+  description = "Number of clusters to create"
   default     = 1
 }
 

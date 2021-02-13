@@ -2,7 +2,7 @@
 # All dollar-sign+curly braces are interpolated by terraform; escape by doubling dollar sign.
 # Without curly braces dollar signs are safe.
 
-# script runs as user ubuntu with password-less sudo allowed
+# NOTE: This script is to be run by root
 
 sudo hostnamectl set-hostname "${hostname}"
 
@@ -16,10 +16,20 @@ echo '${lookup(ssh_public_key, "key_file", "__missing__") == "__missing__" ? tri
 %{endfor~}
 
 # Install additional packages requested by configuration
-apt-get -q update
-apt-get -qy install \
+#apt-get -q update
+#apt-get -qy install \
+#%{for install_package in install_packages~}
+#	${install_package} \
+#%{endfor~}
+
+while ! apt-get -qy update; do 
+	sleep 10
+done
+
 %{for install_package in install_packages~}
-	${install_package} \
+	while ! apt-get -qy install ${install_package}; do
+		sleep 10
+	done
 %{endfor~}
 
 # Install kubeadm and Docker
@@ -39,9 +49,17 @@ Package: kubeadm
 Pin: version ${kubernetes_version}-*
 Pin-Priority: 1000
 " > /etc/apt/preferences.d/kubeadm
-apt-get update
-apt-get install -y apt-transport-https curl
+while ! apt-get update; do
+	sleep 10
+done
+while ! apt-get install -y apt-transport-https curl; do
+	sleep 10
+done
 curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
 echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" >/etc/apt/sources.list.d/kubernetes.list
-apt-get update
-apt-get install -y docker.io kubeadm
+while ! apt-get update; do 
+	sleep 10
+done
+while ! apt-get install -y docker.io kubeadm; do
+	sleep 10
+done
