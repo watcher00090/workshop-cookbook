@@ -202,7 +202,13 @@ resource "aws_instance" "master" {
       "/home/ubuntu/ide_setup.sh",
     ]
   }
+}
 
+resource "null_resource" "start_theia_ide_server" {
+  depends_on = [aws_instance.master, aws_eip.master]
+  provisioner "local-exec" {
+    command = "ssh -i id_rsa -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${aws_eip.master.public_ip} 'cd /home/ubuntu/ide && ((nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 < /dev/null > std.out 2> std.err) & echo Theia IDE started.....)'"
+  }
 }
 
 resource "aws_instance" "worker" {
@@ -248,7 +254,8 @@ subnet_id = aws_subnet.mayalearning.id
     content = templatefile("${path.module}/templates/k8_worker.sh", {
       ip_address : "${aws_instance.master.private_ip}",
       token : "${local.token}",
-      clustername : "${var.cluster_name}",
+#      clustername : "${var.cluster_name}",
+      worker_node_hostname: "${var.cluster_name}-${var.module_pass}-worker-${count.index}"
       count_index : "${count.index}",
     })
     destination = "/home/ubuntu/k8_worker.sh"
@@ -294,6 +301,7 @@ resource "null_resource" "ssh_config" {
   }
 }
 
+/*
 resource "null_resource" "wait_for_bootstrap_to_finish" {
   provisioner "local-exec" {
     command = <<-EOF
@@ -311,12 +319,12 @@ resource "null_resource" "wait_for_bootstrap_to_finish" {
   triggers = {
     instance_ids = join(",", concat([aws_instance.master.id], aws_instance.worker[*].id))
   }
-}
+}*/
 
 resource "null_resource" "flannel" {
   # well ... FIXME?
   # I like to have flannel removable/upgradeable via TF, but stuff required to SSH to the instance for destroy is destroyed before flannel :-/
-  depends_on = [aws_eip_association.master, null_resource.wait_for_bootstrap_to_finish, aws_instance.master, aws_internet_gateway.mayalearning-env-gw, aws_route_table.route-table-mayalearning, aws_route_table_association.subnet-association]
+  depends_on = [aws_eip_association.master, aws_instance.worker, aws_instance.master, aws_internet_gateway.mayalearning-env-gw, aws_route_table.route-table-mayalearning, aws_route_table_association.subnet-association]
   triggers = {
     host            = aws_eip.master.public_ip
     flannel_version = var.flannel_version
@@ -324,6 +332,7 @@ resource "null_resource" "flannel" {
   connection {
     host = self.triggers.host
     user = "ubuntu"
+    private_key = file("id_rsa")
   }
 
   // NOTE: admin.conf is copied to ubuntu's home by kubeadm module
@@ -334,10 +343,10 @@ resource "null_resource" "flannel" {
   }
 
   # FIXME: deleting flannel's yaml isn't enough to undeploy it completely (e.g. /etc/cni/net.d/*, ...)
-  provisioner "remote-exec" {
-    when = destroy
-    inline = [
-      "kubectl delete -f \"https://raw.githubusercontent.com/coreos/flannel/v${self.triggers.flannel_version}/Documentation/kube-flannel.yml\""
-    ]
-  }
+  # provisioner "remote-exec" {
+  #  when = destroy
+  #  inline = [
+  #    "kubectl delete -f \"https://raw.githubusercontent.com/coreos/flannel/v${self.triggers.flannel_version}/Documentation/kube-flannel.yml\""
+  #  ]
+  #}
 }

@@ -1,4 +1,5 @@
-mkdir ide
+#!/bin/bash
+mkdir /home/ubuntu/ide
 mkdir /home/ubuntu/workshop
 git clone ${workshop_url} /home/ubuntu/workshop
 cd ide
@@ -61,5 +62,41 @@ while ! yarn theia build; do
     sleep 10
 done
 # su -c 'nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 &' ubuntu
+#sudo nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 & echo 'started'
 
-sudo nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 & echo 'started'
+#echo '
+#(cd ~/ide && yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000) &
+#THEIA_IDE_PID=$!
+#disown -h $THEIA_IDE_PID' > /home/ubuntu/start_theia.sh
+#chmod +x /home/ubuntu/start_theia.sh
+#/bin/bash -c "/home/ubuntu/start_theia.sh"
+
+#(nohup cd ~/ide && yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 & < /dev/null > std.out 2> std.err
+
+#cd /home/ubuntu/ide
+#nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 & < /dev/null > std.out 2> std.err
+
+# cd /home/ubuntu/ide
+#setsid yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000
+#setsid nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 & < /dev/null > std.out 2> std.err
+
+#sudo su -
+#sudo su -c 'cd /home/ubuntu/ide && nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 &' ubuntu
+
+#cd /home/ubuntu/ide
+#nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 < /dev/null > std.out 2> std.err & echo parent
+#MY_PID=$!
+#disown -h $MY_PID
+
+#setsid nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 < /dev/null > std.out 2> std.err
+#echo "theia ide setup complete"
+
+#
+# start Theia IDE 
+# "cd /home/ubuntu/ide",
+# "(nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 < /dev/null > std.out 2> std.err) & echo Theia IDE started.....",
+#
+      
+# ssh -i test_pair.pem ec2-user@3.15.173.157 "(nohup sleep 10000 < /dev/null > std.out 2> std.err) & cat /home/ec2-user/tmpfile.txt"
+# cd /home/ubuntu/ide
+# (nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 < /dev/null > std.out 2> std.err) & echo Theia IDE started.....

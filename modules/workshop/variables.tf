@@ -13,7 +13,8 @@ variable "tags" {
 variable "ami" {
   type        = string
   description = "A set of tags to assign to the created AWS resources. These tags will be assigned in addition to the default tags. The default tags include \"terraform-kubeadm:cluster\" which is assigned to all resources and whose value is the cluster name, and \"terraform-kubeadm:node\" which is assigned to the EC2 instances and whose value is the name of the Kubernetes node that this EC2 corresponds to."
-  default     = "ami-0c3aa5b042768797c"
+  default = "ami-0996d3051b72b5b2c"
+  # (Ubuntu 16) default     = "ami-0c3aa5b042768797c"
   #us-east-1 ami : "ami-07f5c641c23596eb9"
 }
 
