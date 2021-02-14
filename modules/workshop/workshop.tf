@@ -205,14 +205,14 @@ resource "aws_instance" "master" {
 }
 
 resource "null_resource" "start_theia_ide_server" {
-  depends_on = [aws_instance.master, aws_eip.master]
+  depends_on = [aws_instance.master, aws_eip.master, aws_eip_association.master]
   provisioner "local-exec" {
     command = "ssh -i id_rsa -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${aws_eip.master.public_ip} 'cd /home/ubuntu/ide && ((nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 < /dev/null > std.out 2> std.err) & echo Theia IDE started.....)'"
   }
 }
 
 resource "aws_instance" "worker" {
-  depends_on = [aws_instance.master]
+  depends_on = [aws_instance.master, aws_eip_association.master]
   ami = var.ami
   instance_type = var.instance_type
   #availability_zone = "us-east-1a"
