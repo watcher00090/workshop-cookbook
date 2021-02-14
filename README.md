@@ -6,4 +6,5 @@ Requirements:
 
 Notes: 
 - might take around 7 minutes (might even take up to 10 minutes) for the package locks to be released on the master and worker nodes prior to the machine-bootstrap scripts starting....
+- might see 'aws_instace.master is creating......' output for about 5 minutes before the machine-bootstrap script starts running on the masters
 - will isolate each cluster inside it's own VPC
