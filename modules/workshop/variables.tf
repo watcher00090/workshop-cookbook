@@ -52,6 +52,7 @@ variable "install_packages" {
     "sysstat",
     "tcpdump",
     "build-essential",
+    "python3-pip"
   ]
 }
 
