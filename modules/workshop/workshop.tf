@@ -91,15 +91,15 @@ resource "aws_route_table_association" "subnet-association" {
 #------------------------------------------------------------------------------#
 
 # EIP for master node because it must know its public IP during initialisation
-resource "aws_eip" "master" {
-  vpc  = true
-  tags = local.tags
-}
+#resource "aws_eip" "master" {
+#  vpc  = true
+#  tags = local.tags
+#}
 
-resource "aws_eip_association" "master" {
-  allocation_id = aws_eip.master.id
-  instance_id   = aws_instance.master.id
-}
+#resource "aws_eip_association" "master" {
+#  allocation_id = aws_eip.master.id
+#  instance_id   = aws_instance.master.id
+#}
 
 #------------------------------------------------------------------------------#
 # Bootstrap token for kubeadm
@@ -107,25 +107,42 @@ resource "aws_eip_association" "master" {
 
 # Generate bootstrap token
 # See https://kubernetes.io/docs/reference/access-authn-authz/bootstrap-tokens/
+/*
 resource "random_string" "token_id" {
   length  = 6
   special = false
   upper   = false
 }
+*/
 
+/*
 resource "random_string" "token_secret" {
   length  = 16
   special = false
   upper   = false
 }
+*/
 
+/*
 locals {
   token = "${random_string.token_id.result}.${random_string.token_secret.result}"
 }
+*/
 
 resource "tls_private_key" "internode_ssh" {
   algorithm   = "RSA"
   rsa_bits = "2048"
+}
+
+resource "tls_private_key" "servicekey" {
+  algorithm   = "RSA"
+  rsa_bits = "2048"
+}
+
+resource "random_string" "k3s_cluster_token" {
+  length = 16
+  special = false
+  upper = false
 }
 
 resource "aws_instance" "master" {
@@ -133,156 +150,169 @@ resource "aws_instance" "master" {
   instance_type = var.instance_type
   #availability_zone = "us-east-1a"
   subnet_id     = aws_subnet.mayalearning.id
-  key_name = var.aws_public_key_name
+#  key_name = var.aws_public_key_name
   vpc_security_group_ids = [
     aws_security_group.allow_access.id
   ]
   root_block_device {
     volume_size = var.aws_instance_root_size_gb
   }
-  #tags        = merge(local.tags, { "terraform-kubeadm:node" = "master", "Name" = "${var.cluster_name}-master-${format("%d", var.module_pass)}" })
-  #volume_tags = merge(local.tags, { "terraform-kubeadm:node" = "master", "Name" = "${var.cluster_name}-master-${format("%d", var.module_pass)}" })
   tags        = merge(local.tags, { "terraform-kubeadm:node" = "master", "Name" = "${var.cluster_name}-${var.module_pass}-master" })
   volume_tags = merge(local.tags, { "terraform-kubeadm:node" = "master", "Name" = "${var.cluster_name}-${var.module_pass}-master" })
 
-  connection {
-    host = self.public_ip
-    user = "ubuntu"
-    private_key = file("id_rsa")
-  }
-  
-  provisioner "file" {
-    content = templatefile("${path.module}/templates/master_ssh.sh", {
-      key : trimspace(tls_private_key.internode_ssh.public_key_openssh),
-      private_key : trimspace(tls_private_key.internode_ssh.private_key_pem)
-    })
-    destination = "/home/ubuntu/master_ssh.sh"
-  }
-  
-  
-  provisioner "file" {
-    content = templatefile("${path.module}/templates/machine-bootstrap.sh", {
-      docker_version : var.docker_version,
+  user_data = <<-EOF
+    ${templatefile("${path.module}/templates/startup_machine_bootstrap.sh",{
       hostname : "${var.cluster_name}-${var.module_pass}-master",
       install_packages : var.install_packages,
-      kubernetes_version : var.kubernetes_version,
       ssh_public_keys : var.ssh_public_keys,
-      user : "ubuntu",
-    })
-    destination = "/home/ubuntu/machine-bootstrap.sh"
-  }
-  
-  provisioner "file" {
-    content = templatefile("${path.module}/templates/k8_master.sh", {
-      token : "${local.token}",
-      ip_address : "${aws_eip.master.public_ip}",
-      flannel_cidr : "${local.flannel_cidr}",
-      master_node_hostname : "${var.cluster_name}-${var.module_pass}-master",
-    })
-    destination = "/home/ubuntu/k8_master.sh"
-  }
+    })}
 
+    ${templatefile("${path.module}/templates/startup_master_script.sh",{
+      k3s_cluster_token = random_string.k3s_cluster_token.result,
+      pod_network_cidr = local.flannel_cidr,
+      node_name = "${var.cluster_name}-${var.module_pass}-master",
+    })}
+
+    ${templatefile("${path.module}/templates/master_ssh.sh",{
+      key : trimspace(tls_private_key.internode_ssh.public_key_openssh),
+      private_key : trimspace(tls_private_key.internode_ssh.private_key_pem)
+    })}
+
+    ${templatefile("${path.module}/templates/add_servicekey_master.sh",{
+      key : trimspace(tls_private_key.servicekey.public_key_openssh),
+    })}
+
+    touch /root/done
+  EOF
+}
+/*
+resource "null_resource" "start_theia_ide_server" {
+  depends_on = [aws_instance.master]
+  connection {
+    host = aws_instance.master.public_ip
+    user = "ubuntu"
+    private_key = file("id_rsa")
+    agent = false
+  }
   provisioner "file" {
-    content = templatefile("${path.module}/templates/ide_setup.sh", {
+    content = templatefile("${path.module}/templates/ide_setup_and_start.sh", {
       workshop_url : "${var.workshop_url}"
     })
-    destination = "/home/ubuntu/ide_setup.sh"
+    destination = "/home/ubuntu/ide_setup_and_start.sh"
   }
-
+  provisioner "file" {
+    content = templatefile("${path.module}/templates/ide_setup_and_start_helper.sh", {
+      workshop_url : "${var.workshop_url}"
+    })
+    destination = "/home/ubuntu/ide_setup_and_start_helper.sh"
+  }
   provisioner "remote-exec" {
-    inline = [
-      "set -xve",
-      "chmod +x /home/ubuntu/master_ssh.sh /home/ubuntu/k8_master.sh /home/ubuntu/ide_setup.sh",
-      "sudo chmod 777 /home/ubuntu/machine-bootstrap.sh",
-      "sudo chown root:root /home/ubuntu/machine-bootstrap.sh",
-      "sudo su - root -c \"/home/ubuntu/machine-bootstrap.sh\"",
-#      "/home/ubuntu/machine-bootstrap.sh",
-      "/home/ubuntu/k8_master.sh",
-      "/home/ubuntu/master_ssh.sh",
-      "/home/ubuntu/ide_setup.sh",
-    ]
+    inline = ["chmod +x /home/ubuntu/ide_setup_and_start.sh /home/ubuntu/ide_setup_and_start_helper.sh && (nohup /home/ubuntu/ide_setup_and_start.sh &>/dev/null &)"]
   }
 }
+*/
 
-resource "null_resource" "start_theia_ide_server" {
-  depends_on = [aws_instance.master, aws_eip.master, aws_eip_association.master]
-  provisioner "local-exec" {
-    command = "ssh -i id_rsa -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${aws_eip.master.public_ip} 'cd /home/ubuntu/ide && ((nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 < /dev/null > std.out 2> std.err) & echo Theia IDE started.....)'"
-  }
-}
+#resource "null_resource" "start_theia_ide_server" {
+#  depends_on = [aws_instance.master, aws_eip.master, aws_eip_association.master]
+#  provisioner "local-exec" {
+#    command = "ssh -i id_rsa -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${aws_eip.master.public_ip} 'cd /home/ubuntu/ide && ((nohup yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000 < /dev/null > std.out 2> std.err) & echo Theia IDE started.....)'"
+#  }
+#}
 
 resource "aws_instance" "worker" {
-  depends_on = [aws_instance.master, aws_eip_association.master]
   ami = var.ami
   instance_type = var.instance_type
   #availability_zone = "us-east-1a"
-  key_name = var.aws_public_key_name
+#  key_name = var.aws_public_key_name
   security_groups = [aws_security_group.allow_access.id]
   count = 2
-tags = {
-    #Name = "mayalearning-${format("%d", count.index)}"
+  tags = {
     Name = "${var.cluster_name}-${var.module_pass}-worker-${count.index}"
   }
-subnet_id = aws_subnet.mayalearning.id
+  subnet_id = aws_subnet.mayalearning.id
 
-  connection {
-    host = self.public_ip
-    user = "ubuntu"
-    private_key = file("id_rsa")
-  }
-
-  provisioner "file" {
-    content = templatefile("${path.module}/templates/worker_ssh.sh", {
-      key : trimspace(tls_private_key.internode_ssh.public_key_openssh),
-    })
-    destination = "/home/ubuntu/worker_ssh.sh"
-  }
-
-  provisioner "file" {
-    content = templatefile("${path.module}/templates/machine-bootstrap.sh", {
-      docker_version : var.docker_version,
+  user_data = <<-EOF
+    ${templatefile("${path.module}/templates/startup_machine_bootstrap.sh",{
       hostname : "${var.cluster_name}-${var.module_pass}-worker-${count.index}",
       install_packages : var.install_packages,
-      kubernetes_version : var.kubernetes_version,
       ssh_public_keys : var.ssh_public_keys,
-      user : "ubuntu",
-    })
-    destination = "/home/ubuntu/machine-bootstrap.sh"
-  }
+    })}
 
-  provisioner "file" {
-    content = templatefile("${path.module}/templates/k8_worker.sh", {
-      ip_address : "${aws_instance.master.private_ip}",
-      token : "${local.token}",
-#      clustername : "${var.cluster_name}",
-      worker_node_hostname: "${var.cluster_name}-${var.module_pass}-worker-${count.index}"
-      count_index : "${count.index}",
-    })
-    destination = "/home/ubuntu/k8_worker.sh"
-  }
+    ${templatefile("${path.module}/templates/worker_ssh.sh",{
+      key : trimspace(tls_private_key.internode_ssh.public_key_openssh),
+    })}
 
+    ${templatefile("${path.module}/templates/add_servicekey_worker.sh",{
+      key : trimspace(tls_private_key.servicekey.public_key_openssh),
+      private_key : trimspace(tls_private_key.servicekey.private_key_pem),
+      path_to_servicekey_files : var.path_to_servicekey_files
+    })}
+
+    touch /root/done
+  EOF
+}
+
+resource "null_resource" "generate_client_certificates" {
+  depends_on = [null_resource.wait_for_bootstrap_to_finish]
+  count = 2
+  connection {
+    host = aws_instance.worker[count.index].public_ip
+    user = "root"
+    private_key = file("id_rsa")
+    agent = false
+  }  
   provisioner "remote-exec" {
     inline = [
-      "set -xve",
-      "chmod +x /home/ubuntu/k8_worker.sh /home/ubuntu/worker_ssh.sh /home/ubuntu/machine-bootstrap.sh",
-#      "/home/ubuntu/machine-bootstrap.sh",
-      "sudo chmod 777 /home/ubuntu/machine-bootstrap.sh",
-      "sudo chown root:root /home/ubuntu/machine-bootstrap.sh",
-      "sudo su - root -c \"/home/ubuntu/machine-bootstrap.sh\"",
-      "/home/ubuntu/k8_worker.sh",
-      "/home/ubuntu/worker_ssh.sh",
+      "mkdir -p ~/tls/",
+      "scp -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.path_to_servicekey_files}/servicekey root@${aws_instance.master.public_ip}:/var/lib/rancher/k3s/server/tls/client-ca.crt ~/tls/",
+      "scp -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.path_to_servicekey_files}/servicekey root@${aws_instance.master.public_ip}:/var/lib/rancher/k3s/server/tls/client-ca.key ~/tls/",
+      "openssl genrsa -out ~/tls/k8s-user.key 4096",
+      "openssl req -new -key ~/tls/k8s-user.key -out ~/tls/k8s-user.csr -subj \"/CN=user@default/O=admins\"",
+      "openssl x509 -req -in ~/tls/k8s-user.csr -CA ~/tls/client-ca.crt -CAkey ~/tls/client-ca.key -CAcreateserial -out ~/tls/k8s-user.crt -days 10000",
+      "sudo cp ~/tls/k8s-user.crt /usr/local/share/ca-certificates/kubernetes.crt",
+      "sudo update-ca-certificates",
     ]
   }
+}
 
+resource "null_resource" "join_workers_to_cluster" {
+  depends_on = [aws_instance.master, aws_instance.worker, null_resource.wait_for_bootstrap_to_finish, null_resource.generate_client_certificates]
+  count = 2
+  connection {
+    host = aws_instance.worker[count.index].public_ip
+    user = "root"
+    private_key = file("id_rsa")
+    agent = false
+  }  
+  provisioner "file" {
+    content = templatefile("${path.module}/templates/join_worker_to_cluster.sh", {
+      control_plane_address : "${aws_instance.master.private_ip}",
+      worker_node_hostname: "${var.cluster_name}-${var.module_pass}-worker-${count.index}",
+      k3s_cluster_token: random_string.k3s_cluster_token.result,
+    })
+    destination = "/root/join_worker_to_cluster.sh"
+  }
+ # provisioner "remote-exec" {
+ #   inline = ["sudo su root -c 'mv /home/ubuntu/join_worker_to_cluster.sh /root/join_worker_to_cluster.sh && chmod +x /root/join_worker_to_cluster.sh && (nohup /root/join_worker_to_cluster.sh &)'"]
+ #   inline = ["chmod +x /root/join_worker_to_cluster.sh",
+ #             "/root/join_worker_to_cluster.sh",
+ #             "touch /root/remote-exec-completed"]
+  provisioner "remote-exec" {
+    inline = ["chmod +x /root/join_worker_to_cluster.sh",
+              "/root/join_worker_to_cluster.sh"
+    ]
+  }
 }
 
 resource "null_resource" "ssh_config" {
-  depends_on = [aws_instance.worker]
+  depends_on = [aws_instance.worker, null_resource.wait_for_bootstrap_to_finish]
   count = length(aws_instance.worker)
   connection {
-    host = aws_eip.master.public_ip
+    #host = aws_eip.master.public_ip
+    host = aws_instance.master.public_ip
     private_key = file("id_rsa")
     user = "ubuntu"
+    agent = false
   }
   provisioner "remote-exec" {
     inline = [
@@ -291,7 +321,7 @@ resource "null_resource" "ssh_config" {
           HostName ${aws_instance.worker[count.index].private_ip}
           User ubuntu
           Port 22
-          IdentityFile ~/.ssh/internode_ssh'\
+          IdentityFile /home/ubuntu/.ssh/internode_ssh'\
         >> /home/ubuntu/.ssh/config
         sudo chmod 600 /home/ubuntu/.ssh/config
         sudo chown ubuntu:ubuntu /home/ubuntu/.ssh/config
@@ -301,52 +331,29 @@ resource "null_resource" "ssh_config" {
   }
 }
 
-/*
+#locals {
+#  check_api_server_available_command = <<-EOF
+#    while true; do
+#      sleep 2
+#      ! curl https://${aws_instance.master.private_ip}:6443/api --insecure >/dev/null && continue
+#      break
+#    done
+#  EOF
+#}
+
 resource "null_resource" "wait_for_bootstrap_to_finish" {
-  provisioner "local-exec" {
+  depends_on = [aws_instance.master, aws_instance.worker]
+  provisioner "local-exec" {  # check that configuring ssh on the nodes has completed
     command = <<-EOF
     alias ssh='ssh -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
     while true; do
       sleep 2
-      ! ssh ubuntu@${aws_eip.master.public_ip} [[ -f /home/ubuntu/done ]] >/dev/null && continue
+      ! ssh -i ./id_rsa root@${aws_instance.master.public_ip} [[ -f /root/done ]] >/dev/null && continue
       %{for worker_public_ip in aws_instance.worker[*].public_ip~}
-      ! ssh ubuntu@${worker_public_ip} [[ -f /home/ubuntu/done ]] >/dev/null && continue
+      ! ssh -i ./id_rsa root@${worker_public_ip} [[ -f /root/done ]] >/dev/null && continue
       %{endfor~}
       break
     done
     EOF
   }
-  triggers = {
-    instance_ids = join(",", concat([aws_instance.master.id], aws_instance.worker[*].id))
-  }
-}*/
-
-resource "null_resource" "flannel" {
-  # well ... FIXME?
-  # I like to have flannel removable/upgradeable via TF, but stuff required to SSH to the instance for destroy is destroyed before flannel :-/
-  depends_on = [aws_eip_association.master, aws_instance.worker, aws_instance.master, aws_internet_gateway.mayalearning-env-gw, aws_route_table.route-table-mayalearning, aws_route_table_association.subnet-association]
-  triggers = {
-    host            = aws_eip.master.public_ip
-    flannel_version = var.flannel_version
-  }
-  connection {
-    host = self.triggers.host
-    user = "ubuntu"
-    private_key = file("id_rsa")
-  }
-
-  // NOTE: admin.conf is copied to ubuntu's home by kubeadm module
-  provisioner "remote-exec" {
-    inline = [
-      "kubectl apply -f \"https://raw.githubusercontent.com/coreos/flannel/v${self.triggers.flannel_version}/Documentation/kube-flannel.yml\""
-    ]
-  }
-
-  # FIXME: deleting flannel's yaml isn't enough to undeploy it completely (e.g. /etc/cni/net.d/*, ...)
-  # provisioner "remote-exec" {
-  #  when = destroy
-  #  inline = [
-  #    "kubectl delete -f \"https://raw.githubusercontent.com/coreos/flannel/v${self.triggers.flannel_version}/Documentation/kube-flannel.yml\""
-  #  ]
-  #}
 }
