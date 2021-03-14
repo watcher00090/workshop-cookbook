@@ -266,6 +266,7 @@ resource "aws_instance" "worker" {
   EOF
 }
 
+/*
 resource "null_resource" "generate_client_certificates" {
   depends_on = [null_resource.wait_for_bootstrap_to_finish]
   count = 2
@@ -288,9 +289,10 @@ resource "null_resource" "generate_client_certificates" {
     ]
   }
 }
+*/
 
 resource "null_resource" "join_workers_to_cluster" {
-  depends_on = [aws_instance.master, aws_instance.worker, null_resource.wait_for_bootstrap_to_finish, null_resource.generate_client_certificates]
+  depends_on = [aws_instance.master, aws_instance.worker, null_resource.wait_for_bootstrap_to_finish]
   count = 2
   connection {
     host = aws_instance.worker[count.index].public_ip

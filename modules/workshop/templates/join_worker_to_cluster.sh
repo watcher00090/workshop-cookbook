@@ -4,7 +4,7 @@
 # check that the cluster has come up
 while true; do
     sleep 2
-    ! curl https://${control_plane_address}:6443/api --insecure >/dev/null && continue # TODO IMPROVE THIS, FOR INSTNACE TRY TO GET THE NAME OF THE KUBERNETES SERVICE AND TEST THAT IT'S service/kubernetes OR SOMETHING LIKE THAT
+    ! curl https://${control_plane_address}:6443/api --insecure && continue # TODO IMPROVE THIS, FOR INSTNACE TRY TO GET THE NAME OF THE KUBERNETES SERVICE AND TEST THAT IT'S service/kubernetes OR SOMETHING LIKE THAT
     break
 done
 
