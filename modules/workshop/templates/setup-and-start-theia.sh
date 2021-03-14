@@ -56,5 +56,12 @@ while ! sudo apt-get install yarn -y; do
     sleep 10
 done
 
-nohup /home/ubuntu/ide_setup_and_start_helper.sh < /dev/null &>/home/ubuntu/theia_setup_and_startup_log.txt & echo 'Setting up and starting IDE....'
-sleep 3
+while ! yarn install; do # install the dependencies for the IDE
+    sleep 10
+done
+while ! yarn theia build; do # build the IDE
+    sleep 10
+done
+
+# start the IDE
+yarn start /home/ubuntu/workshop --hostname 0.0.0.0 --port 3000

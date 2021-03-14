@@ -185,15 +185,16 @@ resource "aws_instance" "master" {
     touch /root/done
   EOF
 }
-/*
+
 resource "null_resource" "start_theia_ide_server" {
-  depends_on = [aws_instance.master]
+  depends_on = [aws_instance.master, null_resource.wait_for_bootstrap_to_finish]
   connection {
     host = aws_instance.master.public_ip
     user = "ubuntu"
     private_key = file("id_rsa")
     agent = false
   }
+  /*
   provisioner "file" {
     content = templatefile("${path.module}/templates/ide_setup_and_start.sh", {
       workshop_url : "${var.workshop_url}"
@@ -206,11 +207,24 @@ resource "null_resource" "start_theia_ide_server" {
     })
     destination = "/home/ubuntu/ide_setup_and_start_helper.sh"
   }
+  */
+   # provisioner "remote-exec" {
+ #   inline = ["chmod +x /home/ubuntu/ide_setup_and_start.sh /home/ubuntu/ide_setup_and_start_helper.sh && (nohup /home/ubuntu/ide_setup_and_start.sh &>/dev/null &)"]
+ # }
+  provisioner "file" {
+    content = templatefile("${path.module}/templates/setup-and-start-theia.sh", {
+      workshop_url : "${var.workshop_url}"
+    })
+    destination = "/home/ubuntu/setup-and-start-theia.sh"
+  }
   provisioner "remote-exec" {
-    inline = ["chmod +x /home/ubuntu/ide_setup_and_start.sh /home/ubuntu/ide_setup_and_start_helper.sh && (nohup /home/ubuntu/ide_setup_and_start.sh &>/dev/null &)"]
+    inline = ["chmod +x /home/ubuntu/setup-and-start-theia.sh",
+              "nohup /home/ubuntu/setup-and-start-theia.sh </dev/null >/home/ubuntu/theia_setup_and_start_log.txt 2>&1 &",
+              "sleep 3",
+              "sudo mv /home/ubuntu/theia_setup_and_start_log.txt /root/theia_setup_and_start_log.txt",
+              "sudo chown root:root /root/theia_setup_and_start_log.txt"]
   }
 }
-*/
 
 #resource "null_resource" "start_theia_ide_server" {
 #  depends_on = [aws_instance.master, aws_eip.master, aws_eip_association.master]
@@ -299,7 +313,8 @@ resource "null_resource" "join_workers_to_cluster" {
  #             "touch /root/remote-exec-completed"]
   provisioner "remote-exec" {
     inline = ["chmod +x /root/join_worker_to_cluster.sh",
-              "/root/join_worker_to_cluster.sh"
+              "nohup /root/join_worker_to_cluster.sh < /dev/null >/root/join_worker_to_cluster_log.txt 2>&1 &",
+              "sleep 3"
     ]
   }
 }

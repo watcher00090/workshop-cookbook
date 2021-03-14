@@ -1,5 +1,5 @@
 #!/bin/bash
-{
+# {
 
 # check that the cluster has come up
 while true; do
@@ -16,4 +16,4 @@ export INSTALL_K3S_EXEC="--node-name ${worker_node_hostname}"
 # join the cluster
 curl -sfL https://get.k3s.io | sh -
 
-} > join_worker_to_cluster_log.txt 2>&1
+# } > join_worker_to_cluster_log.txt 2>&1
