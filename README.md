@@ -1,16 +1,19 @@
 # workshop-cookbook
 
-Requirements:
-- public and private key in root directory of repository. public key called id_rsa.pub, private key called id_rsa. 
-- appropriate AWS EC2 vCPU, VPC, and EIP limits for us-east-1 or whichever aws region you'd like the scripts to provision into
+## To Run: 
+```
+terraform init
+terraform apply -parallelism=${DESIRED_PARALLELISM} --var 'cluster_count=${NUM_CLUSTERS}'
+```
 
-Notes: 
-- If you get an 
+## Requirements:
+- Public and private key in the root directory of the project. The public key should have permissions 644 and be called id_rsa.pub, and the private key should have permissions 600 and be called id_rsa. 
+- Appropriate AWS EC2 vCPU, VPC, and EIP limits for us-east-2 or whichever aws region you'd like provision the clusters in. 
 
-Error: timeout - last error: dial tcp 52.15.153.23:22: i/o timeout
-
-, just run 'terraform apply' again (without calling terraform destroy). I'm guessing this error is caused by the AWS cli itself that terraform is calling....
-
-- might take around 7 minutes (might even take up to 10 minutes) for the package locks to be released on the master and worker nodes prior to the machine-bootstrap scripts starting....
-- might see 'aws_instace.master is creating......' output for about 5 minutes before the machine-bootstrap script starts running on the masters
-- will isolate each cluster inside it's own VPC
+## Notes: 
+- It might take around 7 minutes after the running of the scripts for Theia to come up on the masters (it should be accessible at port 3000 on them)
+- It shouldn't take more than an hour to run these scripts in the worst case. Ideally, running the scripts should complete after 15 minutes. 
+- It might take around 7 minutes for the bootstrap process (`module.workshop[43].null_resource.wait_for_bootstrap_to_finish`) on the nodes to finish....
+- These scripts will isolate each cluster inside it's own VPC. 
+- About the `-parallelism` flag: The default is 8. I'm guessing that the scripts will run more quickly the larger you set it. I've been setting it to 1200 (more than the number of resources being created). 
+- _NOTE_: I'm guessing that running `terraform destroy` with the `-parallelism=${DESIRED_PARALLELISM}` flag might speed the destroy up a little, also. 
