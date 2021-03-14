@@ -8,6 +8,8 @@ terraform apply -parallelism=${DESIRED_PARALLELISM} --var 'cluster_count=${NUM_C
 
 About the `-parallelism` flag: The default is 8. I'm guessing that the scripts will run more quickly the larger you set it. I've been setting it to 1200 (more than the number of resources being created). 
 
+NOTE: you might try running `terraform destroy` with the `-parallelism=${DESIRED_PARALLELISM}` flag also, it might spped the destroy up a little. 
+
 Requirements:
 - Public and private key in the root directory of the project. The public key should have permissions 644 and be called id_rsa.pub, and the private key should have permissions 600 and be called id_rsa. 
 - Appropriate AWS EC2 vCPU, VPC, and EIP limits for us-east-2 or whichever aws region you'd like provision the clusters in. 
