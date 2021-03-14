@@ -6,7 +6,7 @@ terraform init
 terraform apply -parallelism=${DESIRED_PARALLELISM} --var 'cluster_count=${NUM_CLUSTERS}'
 ```
 
-About the `-parallelism` flag: The default is 8. I'm guessing that the scripts will run more quickly the larger you set it. I've been using `-parallelism=1200` (more than the number of resources being created). 
+About the `-parallelism` flag: The default is 8. I'm guessing that the scripts will run more quickly the larger you set it. I've been setting it to 1200 (more than the number of resources being created). 
 
 Requirements:
 - Public and private key in the root directory of the project. The public key should have permissions 644 and be called id_rsa.pub, and the private key should have permissions 600 and be called id_rsa. 
