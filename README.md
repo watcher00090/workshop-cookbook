@@ -13,5 +13,6 @@ Requirements:
 - Appropriate AWS EC2 vCPU, VPC, and EIP limits for us-east-2 or whichever aws region you'd like provision the clusters in. 
 
 Notes: 
+- It shouldn't take more than an hour to run these scripts in the worst case. Ideally, the running the scripts should complete after 15 minutes. 
 - It might take around 7 minutes for the bootstrap process (`module.workshop[43].null_resource.wait_for_bootstrap_to_finish`) on the nodes to finish....
 - These scripts will isolate each cluster inside it's own VPC. 
