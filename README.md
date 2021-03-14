@@ -15,4 +15,4 @@ terraform apply -parallelism=${DESIRED_PARALLELISM} --var 'cluster_count=${NUM_C
 - It might take around 7 minutes for the bootstrap process (`module.workshop[43].null_resource.wait_for_bootstrap_to_finish`) on the nodes to finish....
 - These scripts will isolate each cluster inside it's own VPC. 
 - About the `-parallelism` flag: The default is 8. I'm guessing that the scripts will run more quickly the larger you set it. I've been setting it to 1200 (more than the number of resources being created). 
-- _NOTE_: I'm guessing that running `terraform destroy` with the `-parallelism=${DESIRED_PARALLELISM}` flag might spped the destroy up a little. 
+- _NOTE_: I'm guessing that running `terraform destroy` with the `-parallelism=${DESIRED_PARALLELISM}` flag might speed the destroy up a little, also. 
