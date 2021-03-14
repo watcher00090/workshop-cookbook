@@ -13,6 +13,7 @@ resource "aws_vpc" "mayalearning" {
 }
 
 resource "aws_subnet" "mayalearning" {
+  depends_on = [aws_vpc.mayalearning]
   vpc_id     = aws_vpc.mayalearning.id
   cidr_block = "10.0.1.0/24"
   map_public_ip_on_launch = true
@@ -23,6 +24,7 @@ resource "aws_subnet" "mayalearning" {
 }
 
 resource "aws_security_group" "allow_access" {
+  depends_on = [aws_vpc.mayalearning]
   name        = "security-group-allow-access-${var.module_pass}"
   description = "Allow SSH inbound traffic"
   vpc_id      = aws_vpc.mayalearning.id
@@ -64,6 +66,7 @@ resource "aws_security_group" "allow_access" {
 }
 
 resource "aws_internet_gateway" "mayalearning-env-gw" {
+  depends_on = [aws_vpc.mayalearning]
   vpc_id = aws_vpc.mayalearning.id
 tags = {
     Name = "mayalearning-env-gw-${var.module_pass}"
@@ -71,6 +74,7 @@ tags = {
 }
 
 resource "aws_route_table" "route-table-mayalearning" {
+  depends_on = [aws_vpc.mayalearning, aws_internet_gateway.mayalearning-env-gw]
   vpc_id = aws_vpc.mayalearning.id
 route {
     cidr_block = "0.0.0.0/0"
@@ -82,6 +86,7 @@ tags = {
 }
 
 resource "aws_route_table_association" "subnet-association" {
+  depends_on = [aws_subnet.mayalearning, aws_route_table.route-table-mayalearning]
   subnet_id      = aws_subnet.mayalearning.id
   route_table_id = aws_route_table.route-table-mayalearning.id 
 }
@@ -146,6 +151,7 @@ resource "random_string" "k3s_cluster_token" {
 }
 
 resource "aws_instance" "master" {
+  depends_on = [aws_subnet.mayalearning, aws_security_group.allow_access, random_string.k3s_cluster_token]
   ami           = var.ami
   instance_type = var.instance_type
   #availability_zone = "us-east-1a"
@@ -234,6 +240,8 @@ resource "null_resource" "start_theia_ide_server" {
 #}
 
 resource "aws_instance" "worker" {
+  depends_on = [aws_subnet.mayalearning, aws_security_group.allow_access, random_string.k3s_cluster_token]
+
   ami = var.ami
   instance_type = var.instance_type
   #availability_zone = "us-east-1a"

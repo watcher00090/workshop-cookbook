@@ -24,22 +24,22 @@ chown -R ubuntu:ubuntu /home/ubuntu/.ssh/
 
 systemctl restart sshd
 
-#while ! apt-get -qy update; do 
-#    echo 'apt-get -qy update is unavailable right now, sleeping and trying again....'
-#	sleep 4
-#done
+while ! apt-get -qy update; do 
+    echo 'apt-get -qy update is unavailable right now, sleeping and trying again....'
+	sleep 4
+done
 
-#%{for install_package in install_packages~}
-#	while ! apt-get -qy install ${install_package}; do
-#        echo 'apt-get -qy install for a package is unavailable right now, sleeping and trying again....'
-#		sleep 4
-#	done
-#%{endfor~}
-
-apt-get -qy update
-apt-get -qy install \
 %{for install_package in install_packages~}
-    ${install_package} \
+	while ! apt-get -qy install ${install_package}; do
+        echo 'apt-get -qy install for a package is unavailable right now, sleeping and trying again....'
+		sleep 4
+	done
 %{endfor~}
+
+#apt-get -qy update
+#apt-get -qy install \
+#%{for install_package in install_packages~}
+#    ${install_package} \
+#%{endfor~}
 
 } >> /root/startup_script_log.txt 2>&1
