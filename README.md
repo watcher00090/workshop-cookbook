@@ -1,6 +1,6 @@
 # workshop-cookbook
 
-## To run: 
+## To Run: 
 ```
 terraform init
 terraform apply -parallelism=${DESIRED_PARALLELISM} --var 'cluster_count=${NUM_CLUSTERS}'
