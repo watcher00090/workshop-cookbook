@@ -1,3 +1,6 @@
+
+Use of this project is under the DWTFYW license.
+
 # workshop-cookbook
 
 ## To Run: 
