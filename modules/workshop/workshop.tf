@@ -91,25 +91,29 @@ resource "aws_route_table_association" "subnet-association" {
   route_table_id = aws_route_table.route-table-mayalearning.id 
 }
 
+resource "null_resource" "wait_for_networking_setup_to_finish" {
+  depends_on = [aws_vpc.mayalearning, aws_security_group.allow_access, aws_internet_gateway.mayalearning-env-gw, aws_route_table.route-table-mayalearning, aws_route_table_association.subnet-association]
+}
+#
 #------------------------------------------------------------------------------#
 # Elastic IP for master node
 #------------------------------------------------------------------------------#
-
+#
 # EIP for master node because it must know its public IP during initialisation
 #resource "aws_eip" "master" {
 #  vpc  = true
 #  tags = local.tags
 #}
-
+#
 #resource "aws_eip_association" "master" {
 #  allocation_id = aws_eip.master.id
 #  instance_id   = aws_instance.master.id
 #}
-
+#
 #------------------------------------------------------------------------------#
 # Bootstrap token for kubeadm
 #------------------------------------------------------------------------------#
-
+#
 # Generate bootstrap token
 # See https://kubernetes.io/docs/reference/access-authn-authz/bootstrap-tokens/
 /*
@@ -151,7 +155,7 @@ resource "random_string" "k3s_cluster_token" {
 }
 
 resource "aws_instance" "master" {
-  depends_on = [aws_subnet.mayalearning, aws_security_group.allow_access, random_string.k3s_cluster_token]
+  depends_on = [null_resource.wait_for_networking_setup_to_finish, random_string.k3s_cluster_token]
   ami           = var.ami
   instance_type = var.instance_type
   #availability_zone = "us-east-1a"
@@ -240,7 +244,7 @@ resource "null_resource" "start_theia_ide_server" {
 #}
 
 resource "aws_instance" "worker" {
-  depends_on = [aws_subnet.mayalearning, aws_security_group.allow_access, random_string.k3s_cluster_token]
+  depends_on = [null_resource.wait_for_networking_setup_to_finish, random_string.k3s_cluster_token]
 
   ami = var.ami
   instance_type = var.instance_type
