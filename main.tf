@@ -39,6 +39,7 @@ resource "local_file" "create_script_for_making_master_ips_file" {
     echo "successfully added $${#my_arr[@]} ip addresses to ./bin/master_ips.txt"
   EOF
 }
+
 resource "null_resource" "create_master_ips_file" {
   depends_on = [local_file.create_script_for_making_master_ips_file]
   provisioner "local-exec" {

@@ -1,9 +1,6 @@
 #!/bin/bash
 # 
-# If not passed in as an argument, will use the file ip_list.txt
-# in the parent directory (../) for the ips to check, if found
-# 
-# This script assumes the existence of a file 'master_ips.txt' in the same directory as it, and also assumes that 'master_ips.txt' has one public IP address per line, no blank lines, and no commas
+# This script assumes the existence of a file 'master_ips.txt' in the same directory as it, and also assumes that 'master_ips.txt' has one public IP address per line, and no commas (it can have blank lines, though)
 # 
 # This script returns with status 0 if able to connect to all the Theias on port 3000, and with status 1 otherwise
 # 
@@ -35,19 +32,23 @@ while IFS= read -r line
 do
   num_attempted_connections=$(($num_attempted_connections+1))
   ip_address=$line
-  nc -z -w $TIMEOUT_SECONDS -v $ip_address $theia_ide_port </dev/null &>/dev/null
-  RETURN_STATUS=$?
-  if [[ RETURN_STATUS == 0 ]]; 
-  then 
-    echo "Successfully connected to ${ip_address} port $theia_ide_port!"; 
-    num_successful_connections=$(($num_successful_connections+1))
-  else
-    echo "Failed to connect to ${ip_address} on port $theia_ide_port"
-    if [[ using-immediate-stop-mode == 1 ]];
+  if [ ! -z "$var" ]; 
+  then
+    nc -z -w $TIMEOUT_SECONDS -v $ip_address $theia_ide_port </dev/null &>/dev/null
+    RETURN_STATUS=$?
+    if [[ RETURN_STATUS == 0 ]]; 
     then 
-      return 1
-    fi
-  fi    
+      echo "Successfully connected to ${ip_address} port $theia_ide_port!"; 
+      num_successful_connections=$(($num_successful_connections+1))
+    else
+      echo "Failed to connect to ${ip_address} on port $theia_ide_port"
+      if [[ using-immediate-stop-mode == 1 ]];
+      then 
+        return 1
+      fi
+    fi    
+  fi
+
 done < "$input"
 
 num_inaccessible_hosts=$(($num_attempted_connections - $num_successful_connections))
