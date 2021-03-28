@@ -15,36 +15,39 @@ else
   echo ">>>> running with immediate_stop_mode disabled...."
 fi 
 
+# get the directory containing this script, irregardless of where the script is called from
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
 theia_ide_port=3000
-TIMEOUT_SECONDS=20
+TIMEOUT_SECONDS=5
 num_attempted_connections=0
 num_successful_connections=0
 
-input="master_ips.txt"
+input="$DIR/master_ips.txt"
 
 if [[ ! -f $input ]];
 then
   echo "ERROR: this script requires that there be a file 'master_ips.txt' in the same directory. It will test if it can reach port 3000 for every ip address in this file. Please ensure the presence of this file in this directory and try again."
-  return 1
+  exit 1
 fi
 
 while IFS= read -r line
 do
   num_attempted_connections=$(($num_attempted_connections+1))
   ip_address=$line
-  if [ ! -z "$var" ]; 
+  if [ ! -z "$ip_address" ]; 
   then
     nc -z -w $TIMEOUT_SECONDS -v $ip_address $theia_ide_port </dev/null &>/dev/null
     RETURN_STATUS=$?
-    if [[ RETURN_STATUS == 0 ]]; 
+    if [[ $RETURN_STATUS == 0 ]]; 
     then 
-      echo "Successfully connected to ${ip_address} port $theia_ide_port!"; 
+      echo "Successfully connected to ${ip_address} on port $theia_ide_port!"; 
       num_successful_connections=$(($num_successful_connections+1))
     else
       echo "Failed to connect to ${ip_address} on port $theia_ide_port"
-      if [[ using-immediate-stop-mode == 1 ]];
+      if [[ $using_immediate_stop_mode == 1 ]];
       then 
-        return 1
+        exit 1
       fi
     fi    
   fi
@@ -53,9 +56,11 @@ done < "$input"
 
 num_inaccessible_hosts=$(($num_attempted_connections - $num_successful_connections))
 
-if [[ num_successful_connections -geq 0 ]];
+if [[ num_successful_connections -ge 0 ]];
 then
-  return 1
+  echo "Summary: out of $num_attempted_connections attempted connections, we found $num_inaccessible_hosts inaccessible host(s)."
+  exit 1
 else 
-  return 0
+  echo "Summary: successfully connected to all instances on port 3000, hooray!"
+  exit 0
 fi
