@@ -21,7 +21,14 @@ variable "ami" {
   default = "ami-08962a4068733a2b6"
 }
 
-variable "instance_type" {}
+variable "instance_type" {
+  type        = string
+  description = "A set of tags to assign to the created AWS resources. These tags will be assigned in addition to the default tags. The default tags include \"terraform-kubeadm:cluster\" which is assigned to all resources and whose value is the cluster name, and \"terraform-kubeadm:node\" which is assigned to the EC2 instances and whose value is the name of the Kubernetes node that this EC2 corresponds to."
+  //default     = "t3.medium"
+  default = "m5ad.large"
+//  default = "c5ad.xlarge"
+//  default = "i3.large"
+}
 
 variable "aws_vpc_cidr_block" {
   type        = string
