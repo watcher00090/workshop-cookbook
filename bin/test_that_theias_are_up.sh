@@ -56,7 +56,7 @@ done < "$input"
 
 num_inaccessible_hosts=$(($num_attempted_connections - $num_successful_connections))
 
-if [[ num_successful_connections -ge 0 ]];
+if [[ $num_inaccessible_hosts -gt 0 ]];
 then
   echo "Summary: out of $num_attempted_connections attempted connections, we found $num_inaccessible_hosts inaccessible host(s)."
   exit 1
